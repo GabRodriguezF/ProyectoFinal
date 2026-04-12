@@ -1,0 +1,3 @@
+../Src/spi_driver.c:12:6:SPI1_gpio_init	1
+../Src/spi_driver.c:46:6:SPI1_init	1
+../Src/spi_driver.c:73:6:SPI1_send_byte	4

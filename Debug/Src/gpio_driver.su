@@ -1,0 +1,5 @@
+../Src/gpio_driver.c:6:6:TFT_ctrl_gpio_init	4	static
+../Src/gpio_driver.c:33:6:GPIOB_Init_PB12_13_14_Output	4	static
+../Src/gpio_driver.c:68:6:GPIOB_Init_RGB_PWM_Output	4	static
+../Src/gpio_driver.c:90:6:gpio_pa2_pa3_output_init	4	static
+../Src/gpio_driver.c:110:6:gpio_pc0_pc1_pc2_pc3_pc4_init	4	static

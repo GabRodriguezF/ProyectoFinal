@@ -1,0 +1,17 @@
+../Src/ILI9341_driver.c:51:6:ili_send_CMD	1
+../Src/ILI9341_driver.c:56:6:ili_send_data	1
+../Src/ILI9341_driver.c:61:6:ILI9341_init	1
+../Src/ILI9341_driver.c:175:38:delay_cycles	2
+../Src/ILI9341_driver.c:183:6:ili_set_window	1
+../Src/ILI9341_driver.c:202:6:ili9341_fill_screen	2
+../Src/ILI9341_driver.c:219:6:reset_TFT	1
+../Src/ILI9341_driver.c:226:6:draw_char	4
+../Src/ILI9341_driver.c:249:6:draw_string	13
+../Src/ILI9341_driver.c:294:6:ili_fill_rect	4
+../Src/ILI9341_driver.c:314:6:ili_draw_rect	7
+../Src/ILI9341_driver.c:327:6:ili_draw_point4	1
+../Src/ILI9341_driver.c:332:6:ili_float_2_intstring	1
+../Src/ILI9341_driver.c:344:6:ili_plantilla_grafica	2
+../Src/ILI9341_driver.c:379:6:ili_brightness	1
+../Src/ILI9341_driver.c:383:6:ili_fill_graphs	2
+../Src/ILI9341_driver.c:392:6:ili_draw_graph	2

@@ -1,0 +1,8 @@
+../Src/pwm_driver.c:11:17:get_apb1_timer_clock_hz	2
+../Src/pwm_driver.c:38:6:pwm_pb0_tim3_init	5
+../Src/pwm_driver.c:102:6:pwm_pb0_tim3_set_duty	2
+../Src/pwm_driver.c:111:6:pwm_pb0_tim3_invert_polarity	2
+../Src/pwm_driver.c:125:17:get_pclk2_hz	2
+../Src/pwm_driver.c:141:17:get_tim1clk_hz	2
+../Src/pwm_driver.c:153:6:pwm_tim1_pa8_init	3
+../Src/pwm_driver.c:224:6:pwm_tim1_set_duty_permille	3

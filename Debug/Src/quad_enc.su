@@ -1,0 +1,4 @@
+../Src/quad_enc.c:9:6:encoder_tim2_init	4	static
+../Src/quad_enc.c:64:9:encoder_get_count	4	static
+../Src/quad_enc.c:70:6:encoder_reset	4	static
+../Src/quad_enc.c:80:9:encoder_get_speed_tps	24	static
