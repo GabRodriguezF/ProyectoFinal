@@ -57,6 +57,38 @@ typedef union
 }desc_data_t;
 
 
+//Lectura
+typedef struct __attribute__((packed)) {
+    uint16_t PWM;
+} Leer_PWM_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t Mayor, Menor, T_Mayor, T_Menor;
+} Leer_Cuadrada_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t Mayor, Menor, Pendiente;
+} Leer_Rampa_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t Mayor, Menor, Pendiente;
+} Leer_Diente_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t Mayor, Menor, Pendiente;
+} Leer_Triangulo_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t Engranes = 90, Pulsos = 22, Max_RPM = 110;
+} Leer_DatosMotor_t;
+
+Leer_PWM_t g_PWM;
+Leer_Cuadrada_t g_Cuad;
+Leer_Rampa_t g_Ramp;
+Leer_Diente_t g_Diente;
+Leer_Triangulo_t g_Triangulo;
+Leer_DatosMotor_t g_DatosMotor;
+
 int main(void)
 {
     // Locales de arranque
@@ -326,6 +358,7 @@ void TIM4_IRQHandler(void)
     }
 }
 
+/*
 void USART3_IRQHandler(void)
 {
     if (USART3->SR & USART_SR_RXNE)
@@ -356,16 +389,73 @@ void USART3_IRQHandler(void)
                 break;
         }
     }
+}*/
+
+void USART3_IRQHandler(void)
+{
+    if (USART3->SR & USART_SR_RXNE)
+    {
+        //rx_data = (uint8_t)USART3->DR;
+    	rx_data = (uint8_t)usart3_STM32.r_byte();
+        static uint8_t estado = 0;
+        static uint8_t sub_estado = 0;
+        static uint8_t limite_bytes = 0;
+        static uint8_t *ptr_destino = NULL; // Puntero mágico
+
+        switch(estado) {
+            case 0: // BUSCAR ETIQUETA
+                if (rx_data == 'P') {
+                    ptr_destino = (uint8_t*)&g_motor.d; // Apunta al duty
+                    limite_bytes = 2;
+                    estado = 1;
+                }
+                else if (rx_data == 'C') {	//Cuadrado
+                    ptr_destino = (uint8_t*)&g_Cuad;
+                    limite_bytes = sizeof(Leer_Cuadrada_t);
+                    estado = 1;
+                }
+                else if (rx_data == 'R') {	//Rampa
+					ptr_destino = (uint8_t*)&g_Ramp;
+					limite_bytes = sizeof(Leer_Rampa_t);
+					estado = 1;
+				}
+                else if (rx_data == 'D') {	//Diente
+					ptr_destino = (uint8_t*)&g_Diente;
+					limite_bytes = sizeof(Leer_Diente_t);
+					estado = 1;
+				}
+                else if (rx_data == 'T') {	//Triangulo
+					ptr_destino = (uint8_t*)&g_Triangulo;
+					limite_bytes = sizeof(Leer_Triangulo_t);
+					estado = 1;
+				}
+                else if (rx_data == 'I') {	//Datos Motor
+					ptr_destino = (uint8_t*)&g_DatosMotor;
+					limite_bytes = sizeof(Leer_DatosMotor_t);
+					estado = 1;
+				}
+                sub_estado = 0;
+                break;
+
+            case 1:
+                if (ptr_destino != NULL) {
+                    ptr_destino[sub_estado] = rx_data;
+                    sub_estado++;
+
+                    if (sub_estado >= limite_bytes) {
+                    	uint16_t *datos16 = (uint16_t*)ptr_destino;
+						uint8_t num_elementos = limite_bytes / 2;
+
+						for(uint8_t i = 0; i < num_elementos; i++) {
+							// Intercambio de bytes
+							datos16[i] = (uint16_t)((datos16[i] << 8) | (datos16[i] >> 8));
+						}
+
+						estado = 0;
+                    }
+                }
+                break;
+        }
+    }
 }
 
-uint16_t LeerUsart(void){
-	static uint8_t estado = 0;
-	static uint8_t msb = 0;
-	switch (estado){
-		case 0:
-			break
-		case 1:
-			break
-	}
-
-}

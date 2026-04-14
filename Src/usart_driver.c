@@ -1,5 +1,8 @@
 #define STM32F405xx
 #include "stm32f4xx.h"
+#include "usart_driver.h"
+
+//static USART3_callback cb1 = 0;
 
 void usart_init(void)
 {
@@ -43,3 +46,20 @@ uint8_t read_byte(void)
     d = USART3->DR;
     return d;
 }
+
+/*
+void register_USART3_callback1(USART3_callback c)
+{
+    cb1 = c;
+}
+
+void USART3_IRQHandler(void)
+{
+    if (USART3->SR & USART_SR_RXNE)
+    {
+    	if(cb1 != 0)
+		{
+			cb1();
+		}
+    }
+}*/
