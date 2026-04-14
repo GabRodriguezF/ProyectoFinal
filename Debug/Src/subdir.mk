@@ -22,8 +22,8 @@ C_SRCS += \
 ../Src/system_clock_if.c \
 ../Src/timer_driver.c \
 ../Src/timer_if.c \
-../Src/uart_driver.c \
-../Src/uart_if.c 
+../Src/usart_driver.c \
+../Src/usart_if.c 
 
 OBJS += \
 ./Src/ILI9341_driver.o \
@@ -43,8 +43,8 @@ OBJS += \
 ./Src/system_clock_if.o \
 ./Src/timer_driver.o \
 ./Src/timer_if.o \
-./Src/uart_driver.o \
-./Src/uart_if.o 
+./Src/usart_driver.o \
+./Src/usart_if.o 
 
 C_DEPS += \
 ./Src/ILI9341_driver.d \
@@ -64,8 +64,8 @@ C_DEPS += \
 ./Src/system_clock_if.d \
 ./Src/timer_driver.d \
 ./Src/timer_if.d \
-./Src/uart_driver.d \
-./Src/uart_if.d 
+./Src/usart_driver.d \
+./Src/usart_if.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -75,7 +75,7 @@ Src/%.o Src/%.su Src/%.cyclo: ../Src/%.c Src/subdir.mk
 clean: clean-Src
 
 clean-Src:
-	-$(RM) ./Src/ILI9341_driver.cyclo ./Src/ILI9341_driver.d ./Src/ILI9341_driver.o ./Src/ILI9341_driver.su ./Src/gpio_driver.cyclo ./Src/gpio_driver.d ./Src/gpio_driver.o ./Src/gpio_driver.su ./Src/gpio_if.cyclo ./Src/gpio_if.d ./Src/gpio_if.o ./Src/gpio_if.su ./Src/main.cyclo ./Src/main.d ./Src/main.o ./Src/main.su ./Src/mmcr.cyclo ./Src/mmcr.d ./Src/mmcr.o ./Src/mmcr.su ./Src/pwm_driver.cyclo ./Src/pwm_driver.d ./Src/pwm_driver.o ./Src/pwm_driver.su ./Src/pwm_if.cyclo ./Src/pwm_if.d ./Src/pwm_if.o ./Src/pwm_if.su ./Src/quad_enc.cyclo ./Src/quad_enc.d ./Src/quad_enc.o ./Src/quad_enc.su ./Src/quad_enc_if.cyclo ./Src/quad_enc_if.d ./Src/quad_enc_if.o ./Src/quad_enc_if.su ./Src/spi_driver.cyclo ./Src/spi_driver.d ./Src/spi_driver.o ./Src/spi_driver.su ./Src/spi_if.cyclo ./Src/spi_if.d ./Src/spi_if.o ./Src/spi_if.su ./Src/syscalls.cyclo ./Src/syscalls.d ./Src/syscalls.o ./Src/syscalls.su ./Src/sysmem.cyclo ./Src/sysmem.d ./Src/sysmem.o ./Src/sysmem.su ./Src/system_clock_driver.cyclo ./Src/system_clock_driver.d ./Src/system_clock_driver.o ./Src/system_clock_driver.su ./Src/system_clock_if.cyclo ./Src/system_clock_if.d ./Src/system_clock_if.o ./Src/system_clock_if.su ./Src/timer_driver.cyclo ./Src/timer_driver.d ./Src/timer_driver.o ./Src/timer_driver.su ./Src/timer_if.cyclo ./Src/timer_if.d ./Src/timer_if.o ./Src/timer_if.su ./Src/uart_driver.cyclo ./Src/uart_driver.d ./Src/uart_driver.o ./Src/uart_driver.su ./Src/uart_if.cyclo ./Src/uart_if.d ./Src/uart_if.o ./Src/uart_if.su
+	-$(RM) ./Src/ILI9341_driver.cyclo ./Src/ILI9341_driver.d ./Src/ILI9341_driver.o ./Src/ILI9341_driver.su ./Src/gpio_driver.cyclo ./Src/gpio_driver.d ./Src/gpio_driver.o ./Src/gpio_driver.su ./Src/gpio_if.cyclo ./Src/gpio_if.d ./Src/gpio_if.o ./Src/gpio_if.su ./Src/main.cyclo ./Src/main.d ./Src/main.o ./Src/main.su ./Src/mmcr.cyclo ./Src/mmcr.d ./Src/mmcr.o ./Src/mmcr.su ./Src/pwm_driver.cyclo ./Src/pwm_driver.d ./Src/pwm_driver.o ./Src/pwm_driver.su ./Src/pwm_if.cyclo ./Src/pwm_if.d ./Src/pwm_if.o ./Src/pwm_if.su ./Src/quad_enc.cyclo ./Src/quad_enc.d ./Src/quad_enc.o ./Src/quad_enc.su ./Src/quad_enc_if.cyclo ./Src/quad_enc_if.d ./Src/quad_enc_if.o ./Src/quad_enc_if.su ./Src/spi_driver.cyclo ./Src/spi_driver.d ./Src/spi_driver.o ./Src/spi_driver.su ./Src/spi_if.cyclo ./Src/spi_if.d ./Src/spi_if.o ./Src/spi_if.su ./Src/syscalls.cyclo ./Src/syscalls.d ./Src/syscalls.o ./Src/syscalls.su ./Src/sysmem.cyclo ./Src/sysmem.d ./Src/sysmem.o ./Src/sysmem.su ./Src/system_clock_driver.cyclo ./Src/system_clock_driver.d ./Src/system_clock_driver.o ./Src/system_clock_driver.su ./Src/system_clock_if.cyclo ./Src/system_clock_if.d ./Src/system_clock_if.o ./Src/system_clock_if.su ./Src/timer_driver.cyclo ./Src/timer_driver.d ./Src/timer_driver.o ./Src/timer_driver.su ./Src/timer_if.cyclo ./Src/timer_if.d ./Src/timer_if.o ./Src/timer_if.su ./Src/usart_driver.cyclo ./Src/usart_driver.d ./Src/usart_driver.o ./Src/usart_driver.su ./Src/usart_if.cyclo ./Src/usart_if.d ./Src/usart_if.o ./Src/usart_if.su
 
 .PHONY: clean-Src
 

@@ -12,7 +12,7 @@
 #include "system_clock_if.h"
 #include "pwm_if.h"
 #include "quad_enc_if.h"
-#include "uart_if.h"
+#include "usart_if.h"
 
 #include "timer_driver.h"
 
@@ -28,11 +28,13 @@ volatile variables_RLS_t g_RLS = V_MMCr_DEFAULTS;
 float dbg_rpmr = 0.0f;
 float dbg_rpme = 0.0f;
 
-
+uint8_t flag_LED = 0;
 uint8_t flag_multtimer = 0;
 uint8_t cont_multtimer = 0;
 uint8_t flag_cMotor = 0;
 uint32_t intentos = 0;
+
+volatile uint8_t rx_data;
 
 
 int AntiRebote(gpio_btn_read_fn_t leer_btn);
@@ -40,16 +42,19 @@ void MostrarColor(uint8_t color);
 void ApagarTodo();
 uint8_t LeerBoton();
 
+uint16_t LeerUsart(void);
+
 
 void FPU_Enable(void);
 void clear_fault_flags(void);
 void ini_pantalla(void);
 
 
-#define MAX_SAMPLES 500  // Cámbialo a 500 si ves que la curva sale cortada
-float v_muestras_rpm[MAX_SAMPLES];
-volatile uint16_t indice_muestreo = 0;
-volatile uint8_t capturando_paso = 0;
+typedef union
+{
+    float f;
+    uint8_t bytes_t[4];
+}desc_data_t;
 
 
 int main(void)
@@ -57,16 +62,15 @@ int main(void)
     // Locales de arranque
     clear_fault_flags();
     FPU_Enable();
-    uint8_t aumento_vel = 0;
+    //uint8_t aumento_vel = 0;
     //uint8_t estado = 0;
-    //uint8_t patron_elegido = 0;
 
 
     SYSCLK_STM32.init();
     ini_pantalla();
     quad_STM32.init();
     PWM_STM32.motor.init(PWM_TARGET_HZ);
-    usart_STM32.init_115200();
+    usart3_STM32.init();//Inicialización de USART3 (PB10 Rx - PB11 Tx)
     GPIO_STM32.motor.init();
     GPIO_STM32.rgb.init();
     GPIO_STM32.btn.init();
@@ -76,30 +80,26 @@ int main(void)
     g_RLS.inv_lambda = 1.0f / g_RLS.lambda;
     timer4_init();
 
-    indice_muestreo = 0;
-
     while (1) 
     {
         GPIO_STM32.motor.right();
         if (flag_multtimer == 1)
         {
-        	PWM_STM32.motor.set_duty_permille(g_motor.d);
+        	PWM_STM32.motor.set_duty_permille(g_motor.d);/*
         	if (aumento_vel == 0) {
         		g_motor.d = g_motor.d + 1;
         	}
         	if (aumento_vel == 1) {
         		g_motor.d = g_motor.d - 1;
         	}
-        	if (g_motor.d >= 900) {
+        	if (g_motor.d >= 990) {
         		aumento_vel = 1;
         	}
         	if (g_motor.d <= 200) {
         		aumento_vel = 0;
         	}
 
-			//g_motor.d = 999;
-			indice_muestreo = 1;
-
+			//g_motor.d = 999;*/
 
             flag_multtimer = 0;
             if(g_RLS.ye > max_valor_eje_y )
@@ -121,7 +121,6 @@ int main(void)
             
             ili_draw_graph(g_RLS.ye, g_motor.rpm, 100);
         }
-
     }
 }
 
@@ -289,12 +288,84 @@ void TIM4_IRQHandler(void)
             //------------------------------------------------------------------------------------
         }
 
+        desc_data_t desc_bytes_t;
+        desc_bytes_t.f = g_motor.rpm;
+		usart3_STM32.w_byte('i');
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
+		desc_bytes_t.f = g_RLS.ye;
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
+		desc_bytes_t.f = (float)g_motor.d;
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
+		usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
 
         cont_multtimer = cont_multtimer + 1;
         if(cont_multtimer >= 10) // cada 100ms
         {
+        	flag_LED = flag_LED + 1;
             flag_multtimer = 1;
             cont_multtimer = 0;
         }
+        if(flag_LED >= 5)
+        {
+        	if(g_motor.d == 0){
+        		GPIO_STM32.rgb.r_toggle();
+        	}
+        	else {
+        		GPIO_STM32.rgb.r_off();
+        	}
+        	flag_LED = 0;
+        }
     }
+}
+
+void USART3_IRQHandler(void)
+{
+    if (USART3->SR & USART_SR_RXNE)
+    {
+    	rx_data = (uint8_t)USART3->DR;
+        static uint8_t estado = 0;
+        static uint8_t msb = 0;
+
+        switch(estado) {
+            case 0:
+                if (rx_data == 'P') estado = 1;
+                //if (rx_data == 'C') estado = 0;
+				break;
+            case 1:
+                msb = rx_data;
+                estado = 2;
+                break;
+            case 2:
+            	//Combina los primeros 8 bits con los ultimos 8 bits
+                uint16_t resultado = (uint16_t)((msb << 8) | rx_data);
+                if (resultado <= 1000) { //Por si acaso
+                    g_motor.d = resultado;
+                }
+                estado = 0;
+                break;
+            default:
+                estado = 0;
+                break;
+        }
+    }
+}
+
+uint16_t LeerUsart(void){
+	static uint8_t estado = 0;
+	static uint8_t msb = 0;
+	switch (estado){
+		case 0:
+			break
+		case 1:
+			break
+	}
+
 }
