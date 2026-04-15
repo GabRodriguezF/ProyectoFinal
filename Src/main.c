@@ -42,6 +42,7 @@ void MostrarColor(uint8_t color);
 void ApagarTodo();
 uint8_t LeerBoton();
 
+void Recibo_UART3 (void);
 uint16_t LeerUsart(void);
 
 
@@ -66,20 +67,26 @@ typedef struct __attribute__((packed)) {
     uint16_t Mayor, Menor, T_Mayor, T_Menor;
 } Leer_Cuadrada_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct __attribute__((packed))
+{
     uint16_t Mayor, Menor, Pendiente;
 } Leer_Rampa_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct __attribute__((packed))
+{
     uint16_t Mayor, Menor, Pendiente;
 } Leer_Diente_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct __attribute__((packed))
+{
     uint16_t Mayor, Menor, Pendiente;
 } Leer_Triangulo_t;
 
-typedef struct __attribute__((packed)) {
-    uint16_t Engranes = 90, Pulsos = 22, Max_RPM = 110;
+typedef struct __attribute__((packed))
+{
+    uint16_t Engranes;
+    uint16_t Pulsos;
+    uint16_t Max_RPM;
 } Leer_DatosMotor_t;
 
 Leer_PWM_t g_PWM;
@@ -87,7 +94,17 @@ Leer_Cuadrada_t g_Cuad;
 Leer_Rampa_t g_Ramp;
 Leer_Diente_t g_Diente;
 Leer_Triangulo_t g_Triangulo;
-Leer_DatosMotor_t g_DatosMotor;
+Leer_DatosMotor_t g_DatosMotor = {900, 22, 110};
+
+volatile uint32_t cont_t = 0;
+volatile uint8_t funcion_t = 0;
+
+float gear_t = 90.0f;
+
+void Func_Cuadrada (uint16_t Maximo, uint16_t Minimo, uint16_t T_Max, uint16_t T_Min);
+void Func_Ramp (uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente);
+void Func_DienteSierra(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente);
+void Func_Triangulo(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente);
 
 int main(void)
 {
@@ -103,6 +120,7 @@ int main(void)
     quad_STM32.init();
     PWM_STM32.motor.init(PWM_TARGET_HZ);
     usart3_STM32.init();//Inicialización de USART3 (PB10 Rx - PB11 Tx)
+    usart3_STM32.call_back_01(Recibo_UART3);
     GPIO_STM32.motor.init();
     GPIO_STM32.rgb.init();
     GPIO_STM32.btn.init();
@@ -112,27 +130,12 @@ int main(void)
     g_RLS.inv_lambda = 1.0f / g_RLS.lambda;
     timer4_init();
 
+
     while (1) 
     {
         GPIO_STM32.motor.right();
         if (flag_multtimer == 1)
         {
-        	PWM_STM32.motor.set_duty_permille(g_motor.d);/*
-        	if (aumento_vel == 0) {
-        		g_motor.d = g_motor.d + 1;
-        	}
-        	if (aumento_vel == 1) {
-        		g_motor.d = g_motor.d - 1;
-        	}
-        	if (g_motor.d >= 990) {
-        		aumento_vel = 1;
-        	}
-        	if (g_motor.d <= 200) {
-        		aumento_vel = 0;
-        	}
-
-			//g_motor.d = 999;*/
-
             flag_multtimer = 0;
             if(g_RLS.ye > max_valor_eje_y )
             {
@@ -227,7 +230,7 @@ void TIM4_IRQHandler(void)
         TIM4->SR &= ~TIM_SR_UIF;   // clear UIF (escritura 0)
         g_motor.pos = quad_STM32.get_count();
         // 44 pulsos por vuelta directo en motor, muestra cada 10ms, relación engranes = 4.4:1, rpm max = 1360 
-        g_motor.rpm = g_motor.pos / 22.0f * 100.0f * 60.0f / 90.0f; // rpm = (pulsos / pulsos_por_vuelta) * 100 (para pasar a segundos) * 60 (para pasar a minutos) / relación de engranajes
+        g_motor.rpm = g_motor.pos / (float)g_DatosMotor.Pulsos * 100.0f * 60.0f / (float)gear_t; // rpm = (pulsos / pulsos_por_vuelta) * 100 (para pasar a segundos) * 60 (para pasar a minutos) / relación de engranajes
         g_motor.pos = 0;
         quad_STM32.reset();
         shift_right(g_motor.hist_rpm, 10, g_motor.rpm);
@@ -355,6 +358,29 @@ void TIM4_IRQHandler(void)
         	}
         	flag_LED = 0;
         }
+        switch (funcion_t){
+        	case 0:
+        		g_motor.d = g_PWM.PWM;
+				break;
+        	case 1:
+        		Func_Cuadrada (g_Cuad.Mayor, g_Cuad.Menor, g_Cuad.T_Mayor, g_Cuad.T_Menor);
+        		break;
+        	case 2:
+        		Func_Ramp(g_Ramp.Mayor, g_Ramp.Menor, g_Ramp.Pendiente);
+				break;
+        	case 3:
+        		Func_DienteSierra(g_Diente.Mayor, g_Diente.Menor, g_Diente.Pendiente);
+        		break;
+        	case 4:
+        		Func_Triangulo(g_Triangulo.Mayor, g_Triangulo.Menor, g_Triangulo.Pendiente);
+        }
+        if (g_motor.d < 0){
+			g_motor.d = 0;
+		}
+		if (g_motor.d > 999){
+			g_motor.d = 999;
+		}
+        PWM_STM32.motor.set_duty_permille(g_motor.d);
     }
 }
 
@@ -391,7 +417,7 @@ void USART3_IRQHandler(void)
     }
 }*/
 
-void USART3_IRQHandler(void)
+/*void USART3_IRQHandler(void)
 {
     if (USART3->SR & USART_SR_RXNE)
     {
@@ -457,5 +483,137 @@ void USART3_IRQHandler(void)
                 break;
         }
     }
+}*/
+
+void Recibo_UART3 (void){
+	rx_data = (uint8_t)usart3_STM32.r_byte();
+	static uint8_t estado = 0;
+	static uint8_t sub_estado = 0;
+	static uint8_t limite_bytes = 0;
+	static uint8_t *ptr_destino = NULL; // Puntero mágico
+
+	switch(estado) {
+		case 0: // BUSCAR ETIQUETA
+			if (rx_data == 'P') {
+				ptr_destino = (uint8_t*)&g_PWM; // Apunta al duty
+				limite_bytes = 2;
+				estado = 1;
+				funcion_t = 0;
+				cont_t = 0;
+			}
+			else if (rx_data == 'C') {	//Cuadrado
+				ptr_destino = (uint8_t*)&g_Cuad;
+				limite_bytes = sizeof(Leer_Cuadrada_t);
+				estado = 1;
+				funcion_t = 1;
+				cont_t = 0;
+			}
+			else if (rx_data == 'R') {	//Rampa
+				ptr_destino = (uint8_t*)&g_Ramp;
+				limite_bytes = sizeof(Leer_Rampa_t);
+				estado = 1;
+				funcion_t = 2;
+				cont_t = 0;
+			}
+			else if (rx_data == 'D') {	//Diente
+				ptr_destino = (uint8_t*)&g_Diente;
+				limite_bytes = sizeof(Leer_Diente_t);
+				estado = 1;
+				funcion_t = 3;
+				cont_t = 0;
+			}
+			else if (rx_data == 'T') {	//Triangulo
+				ptr_destino = (uint8_t*)&g_Triangulo;
+				limite_bytes = sizeof(Leer_Triangulo_t);
+				estado = 1;
+				funcion_t = 4;
+				cont_t = 0;
+			}
+			else if (rx_data == 'I') {	//Datos Motor
+				ptr_destino = (uint8_t*)&g_DatosMotor;
+				limite_bytes = sizeof(Leer_DatosMotor_t);
+				estado = 1;
+			}
+			sub_estado = 0;
+			break;
+
+		case 1:
+			if (ptr_destino != NULL) {
+				ptr_destino[sub_estado] = rx_data;
+				sub_estado++;
+
+				if (sub_estado >= limite_bytes) {
+					uint16_t *datos16 = (uint16_t*)ptr_destino;
+					uint8_t num_elementos = limite_bytes / 2;
+
+					for(uint8_t i = 0; i < num_elementos; i++) {
+						// Intercambio de bytes
+						datos16[i] = (uint16_t)((datos16[i] << 8) | (datos16[i] >> 8));
+					}
+					gear_t = g_DatosMotor.Engranes/10.0f;
+					estado = 0;
+				}
+			}
+			break;
+	}
 }
 
+void Func_Cuadrada (uint16_t Maximo, uint16_t Minimo, uint16_t T_Max, uint16_t T_Min){
+	uint32_t periodo_total = T_Max + T_Min;
+	if (cont_t < T_Max) {
+		// Parte ALTA del ciclo
+		g_motor.d = Maximo;
+	}
+	else if (cont_t < periodo_total) {
+		// Parte BAJA del ciclo
+		g_motor.d = Minimo;
+	}
+
+	cont_t++;
+
+	if (cont_t >= periodo_total) {
+		cont_t = 0;
+	}
+}
+
+void Func_Ramp(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente) {
+    uint32_t valor_actual = Minimo + (cont_t * Pendiente);
+
+    if (valor_actual >= Maximo) {
+        g_motor.d = Maximo;
+    } else {
+        g_motor.d = (uint16_t)valor_actual;
+        cont_t++;
+    }
+}
+
+void Func_DienteSierra(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente) {
+    uint32_t valor_actual = Minimo + (cont_t * Pendiente);
+
+    if (valor_actual >= Maximo) {
+        g_motor.d = Maximo;
+        cont_t = 0;
+    } else {
+        g_motor.d = (uint16_t)valor_actual;
+        cont_t++;
+    }
+}
+
+void Func_Triangulo(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente) {
+    if (Pendiente == 0) return;
+    uint32_t pasos_subida = (Maximo - Minimo) / Pendiente;
+    uint32_t periodo_total = pasos_subida * 2;
+
+    if (cont_t < pasos_subida) {
+        g_motor.d = Minimo + (cont_t * Pendiente);
+    }
+    else if (cont_t < periodo_total) {
+        uint32_t bajada = cont_t - pasos_subida;
+        g_motor.d = Maximo - (bajada * Pendiente);
+    }
+    cont_t++;
+
+    if (cont_t >= periodo_total) {
+        cont_t = 0;
+    }
+}

@@ -34,3 +34,20 @@ void timer4_init(void)
     // 7) Arrancar timer
     TIM4->CR1 |= TIM_CR1_CEN;
 }
+/*
+void register_TIM4_callback1(TIM4_callback c)
+{
+    cb2 = c;
+}
+
+void TIM4_IRQHandler(void)
+{
+	if (TIM4->SR & TIM_SR_UIF)
+	{
+		TIM4->SR &= ~TIM_SR_UIF;   // clear UIF (escritura 0)
+		if(cb1 != 0)
+		{
+			cb2();
+		}
+	}
+}*/

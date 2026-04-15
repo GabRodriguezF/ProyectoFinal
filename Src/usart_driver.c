@@ -2,7 +2,7 @@
 #include "stm32f4xx.h"
 #include "usart_driver.h"
 
-//static USART3_callback cb1 = 0;
+static USART3_callback cb1 = 0;
 
 void usart_init(void)
 {
@@ -47,7 +47,7 @@ uint8_t read_byte(void)
     return d;
 }
 
-/*
+
 void register_USART3_callback1(USART3_callback c)
 {
     cb1 = c;
@@ -62,4 +62,4 @@ void USART3_IRQHandler(void)
 			cb1();
 		}
     }
-}*/
+}
