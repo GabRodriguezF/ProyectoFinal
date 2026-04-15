@@ -16,6 +16,8 @@
 
 #include "timer_driver.h"
 
+#include "timer_if.h"
+
 
 #include "ILI9341_driver.h"
 #include "mmcr.h"
@@ -43,6 +45,7 @@ void ApagarTodo();
 uint8_t LeerBoton();
 
 void Recibo_UART3 (void);
+void Timer4_Interrupcion (void);
 uint16_t LeerUsart(void);
 
 
@@ -58,28 +61,39 @@ typedef union
 }desc_data_t;
 
 
-//Lectura
-typedef struct __attribute__((packed)) {
+//Lectura de usart
+typedef struct __attribute__((packed))
+{
     uint16_t PWM;
 } Leer_PWM_t;
 
-typedef struct __attribute__((packed)) {
-    uint16_t Mayor, Menor, T_Mayor, T_Menor;
+typedef struct __attribute__((packed))
+{
+    uint16_t Mayor;
+    uint16_t Menor;
+    uint16_t T_Mayor;
+    uint16_t T_Menor;
 } Leer_Cuadrada_t;
 
 typedef struct __attribute__((packed))
 {
-    uint16_t Mayor, Menor, Pendiente;
+    uint16_t Mayor;
+    uint16_t Menor;
+    uint16_t Aumento_Y;
+    uint16_t Aumento_X;
 } Leer_Rampa_t;
 
 typedef struct __attribute__((packed))
 {
-    uint16_t Mayor, Menor, Pendiente;
+    uint16_t Mayor;
+    uint16_t Menor;
+    uint16_t Aumento_Y;
+    uint16_t Aumento_X;
 } Leer_Diente_t;
 
 typedef struct __attribute__((packed))
 {
-    uint16_t Mayor, Menor, Pendiente;
+    uint16_t Mayor, Menor, Aumento_Y, Aumento_X;
 } Leer_Triangulo_t;
 
 typedef struct __attribute__((packed))
@@ -102,9 +116,9 @@ volatile uint8_t funcion_t = 0;
 float gear_t = 90.0f;
 
 void Func_Cuadrada (uint16_t Maximo, uint16_t Minimo, uint16_t T_Max, uint16_t T_Min);
-void Func_Ramp (uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente);
-void Func_DienteSierra(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente);
-void Func_Triangulo(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente);
+void Func_Ramp(uint16_t Maximo, uint16_t Minimo, uint16_t DY, uint16_t DX);
+void Func_DienteSierra(uint16_t Maximo, uint16_t Minimo, uint16_t DY, uint16_t DX);
+void Func_Triangulo(uint16_t Maximo, uint16_t Minimo, uint16_t DY, uint16_t DX);
 
 int main(void)
 {
@@ -129,6 +143,7 @@ int main(void)
     g_RLS.lambda = g_RLS.fhi * g_RLS.fhi; 
     g_RLS.inv_lambda = 1.0f / g_RLS.lambda;
     timer4_init();
+    timer_STM32.call_back_01(Timer4_Interrupcion);
 
 
     while (1) 
@@ -159,20 +174,23 @@ int main(void)
     }
 }
 
-void MostrarColor(uint8_t color) {
+void MostrarColor(uint8_t color)
+{
     ApagarTodo();
     if (color == 1) GPIO_STM32.rgb.r_on();
     if (color == 2) GPIO_STM32.rgb.g_on();
     if (color == 3) GPIO_STM32.rgb.b_on();
 }
 
-void ApagarTodo() {
+void ApagarTodo()
+{
     GPIO_STM32.rgb.r_off();
     GPIO_STM32.rgb.g_off();
     GPIO_STM32.rgb.b_off();
 }
 
-uint8_t LeerBoton() {
+uint8_t LeerBoton()
+{
     if (AntiRebote(GPIO_STM32.btn.btn_1)) { while(GPIO_STM32.btn.btn_1()); return 1; }
     if (AntiRebote(GPIO_STM32.btn.btn_2)) { while(GPIO_STM32.btn.btn_2()); return 2; }
     if (AntiRebote(GPIO_STM32.btn.btn_3)) { while(GPIO_STM32.btn.btn_3()); return 3; }
@@ -221,315 +239,217 @@ void clear_fault_flags(void)
     SCB->HFSR = 0xFFFFFFFF;   // limpia hardfault status (w1c)
     SCB->DFSR = 0xFFFFFFFF;   // opcional
 }
-void TIM4_IRQHandler(void)
+
+void Timer4_Interrupcion (void)
 {
-    //GPIO_STM32.rgb.r_toggle();//GPIO_STM32.rgb.r_on();
-    uint8_t i = 0;
-    if (TIM4->SR & TIM_SR_UIF) 
-    { 
-        TIM4->SR &= ~TIM_SR_UIF;   // clear UIF (escritura 0)
-        g_motor.pos = quad_STM32.get_count();
-        // 44 pulsos por vuelta directo en motor, muestra cada 10ms, relación engranes = 4.4:1, rpm max = 1360 
-        g_motor.rpm = g_motor.pos / (float)g_DatosMotor.Pulsos * 100.0f * 60.0f / (float)gear_t; // rpm = (pulsos / pulsos_por_vuelta) * 100 (para pasar a segundos) * 60 (para pasar a minutos) / relación de engranajes
-        g_motor.pos = 0;
-        quad_STM32.reset();
-        shift_right(g_motor.hist_rpm, 10, g_motor.rpm);
-        if(intentos < 20)
-        {
-            g_RLS.hist_error[intentos] = 100.0f; // llenar el historial de error con un valor alto para evitar falsas activaciones del RLS al inicio
-            intentos++;
-        }
-        else
-        {
-            g_motor.rpm = promedio_float(g_motor.hist_rpm, 10);
-            dbg_rpmr = g_motor.rpm;
+	uint8_t i = 0;
+	TIM4->SR &= ~TIM_SR_UIF;   // clear UIF (escritura 0)
+	g_motor.pos = quad_STM32.get_count();
+	// 44 pulsos por vuelta directo en motor, muestra cada 10ms, relación engranes = 4.4:1, rpm max = 1360
+	g_motor.rpm = g_motor.pos / (float)g_DatosMotor.Pulsos * 100.0f * 60.0f / (float)gear_t; // rpm = (pulsos / pulsos_por_vuelta) * 100 (para pasar a segundos) * 60 (para pasar a minutos) / relación de engranajes
+	g_motor.pos = 0;
+	quad_STM32.reset();
+	shift_right(g_motor.hist_rpm, 10, g_motor.rpm);
+	if(intentos < 20)
+	{
+		g_RLS.hist_error[intentos] = 100.0f; // llenar el historial de error con un valor alto para evitar falsas activaciones del RLS al inicio
+		intentos++;
+	}
+	else
+	{
+		g_motor.rpm = promedio_float(g_motor.hist_rpm, 10);
+		dbg_rpmr = g_motor.rpm;
 
-             //------------------------------------------------------------------------------------
-            //------------------Se ejecula la estimación del modelo ARX---------------------------
-            //------------------------------------------------------------------------------------
-            g_RLS.ut = g_motor.d /1000.0f; // entrada normalizada (0.0 a 1.0)
-            build_z(g_RLS.z, g_RLS.ut, g_RLS.ut_k_1, g_RLS.ut_k_2, g_RLS.y_k_1, g_RLS.y_k_2);       // z = vector de regresores
-            
-            g_RLS.ut_k_2 = g_RLS.ut_k_1;
-            g_RLS.ut_k_1 = g_RLS.ut;
-            g_RLS.y_k_2 = g_RLS.y_k_1;
-            g_RLS.y_k_1 = g_motor.rpm/1000.0f; // y_k_1 = salida de la planta (rpm medida)
+		 //------------------------------------------------------------------------------------
+		//------------------Se ejecula la estimación del modelo ARX---------------------------
+		//------------------------------------------------------------------------------------
+		g_RLS.ut = g_motor.d /1000.0f; // entrada normalizada (0.0 a 1.0)
+		build_z(g_RLS.z, g_RLS.ut, g_RLS.ut_k_1, g_RLS.ut_k_2, g_RLS.y_k_1, g_RLS.y_k_2);       // z = vector de regresores
 
-            g_RLS.ye = producto_punto(g_RLS.Pe, g_RLS.z, MAX_DIMX);           //===== Predicción con parámetros estimados ===== ye(k) = Pe.' * z;
-            dbg_rpme = g_RLS.ye;
-            g_RLS.e = g_motor.rpm - g_RLS.ye;                                   //===== Error a priori ===== e = y(k) - ye(k);
-            shift_right(g_RLS.hist_error, 20, g_RLS.e);
-            if(intentos == 20)
-            {
-                g_RLS.error_promedio = promedio_float(g_RLS.hist_error, 20);
-                if (fabsf(g_RLS.error_promedio) > 5.0f && flag_cMotor == 0) // umbral de error promedio, ajustar según sea necesario
-                {
-                    multiplicar_matriz_vector(g_RLS.C, g_RLS.z, g_RLS.g);             // ======= RLS estable ======= g = C*z
+		g_RLS.ut_k_2 = g_RLS.ut_k_1;
+		g_RLS.ut_k_1 = g_RLS.ut;
+		g_RLS.y_k_2 = g_RLS.y_k_1;
+		g_RLS.y_k_1 = g_motor.rpm/1000.0f; // y_k_1 = salida de la planta (rpm medida)
 
-                    g_RLS.zgpp = producto_punto(g_RLS.z, g_RLS.g, MAX_DIMX);          // ======= alpha^2 = lambda + z'*g =======
-                    g_RLS.alfa2 = g_RLS.fhi * g_RLS.fhi + g_RLS.zgpp;
-                                                                    
-                    for (int i = 0; i < MAX_DIMX; i++)              // ======= Ganancia K = g / alfa2; =======
-                    {
-                        g_RLS.k_gain[i] = g_RLS.g[i] / g_RLS.alfa2;
-                    }
-                                
-                    for (i = 0; i < MAX_DIMX; i++)                  // ======= Actualización de parámetros ======= Pe = Pe + K*e; =======
-                    {
-                        g_RLS.Pe[i] = g_RLS.Pe[i] + (g_RLS.k_gain[i] * g_RLS.e);
-                    }
-                                                                    // ======= Actualización covarianza (Joseph stabilized form) I = eye(size(C)); =======
-                                                                    // ======= C = (1/lambda) * (I - K*z.') * C * (I - K*z.').' ; =======
-                    crear_C(g_RLS.I,1.0f);                                        // identidad
-                    producto_exterior(g_RLS.k_gain,g_RLS.z,g_RLS.kg_Z);                       // kg_Z = K*z.'
-                    restar_matrices(g_RLS.I, g_RLS.kg_Z, g_RLS.I_minus_KZ);                   // I - K*z.'
-                    escalar_matriz_out(g_RLS.I_minus_KZ, g_RLS.inv_lambda, g_RLS.A_scaled);   // A_scaled = (1/lambda) * (I - K*z.')
-                    multiplicar_matrices(g_RLS.A_scaled, g_RLS.C, g_RLS.R);                   // R = A_scaled * C
-                    // (1) Transpuesta
-                    transponer_matriz(g_RLS.I_minus_KZ, g_RLS.I_minus_KZ_T);
-                    // (2) C_new = R * (I-Kz^T)^T
-                    multiplicar_matrices(g_RLS.R, g_RLS.I_minus_KZ_T, g_RLS.C_new);
-                    // (3) C = C_new
-                    copiar_matriz(g_RLS.C_new, g_RLS.C);
-                    simetrizar(g_RLS.C);
-                    clamp_covariance(g_RLS.C, 1e-3f, 1e3f);
-                }
-                if (fabs(g_RLS.error_promedio) < 5.0f)
-                {
-                    if(flag_cMotor == 0)
-                    {
-                        crear_C(g_RLS.C,10.10f);
-                        g_RLS.alfa2 = 0.0f;
-                        for(i = 0; i < MAX_DIMX; i++)
-                        {
-                            g_RLS.k_gain[i] = 0.0f;
-                            g_RLS.g[i] = 0.0f;
-                        }
-                    }
-                    flag_cMotor = 1;
-                }
-                else
-                {
-                    if (flag_cMotor == 1)
-                    {
-                    }
-                    
-                    flag_cMotor = 0;
-                }
-                
-                
-            }
-            //------------------------------------------------------------------------------------
-            //------------------------------------------------------------------------------------
-        }
+		g_RLS.ye = producto_punto(g_RLS.Pe, g_RLS.z, MAX_DIMX);           //===== Predicción con parámetros estimados ===== ye(k) = Pe.' * z;
+		dbg_rpme = g_RLS.ye;
+		g_RLS.e = g_motor.rpm - g_RLS.ye;                                   //===== Error a priori ===== e = y(k) - ye(k);
+		shift_right(g_RLS.hist_error, 20, g_RLS.e);
+		if(intentos == 20)
+		{
+			g_RLS.error_promedio = promedio_float(g_RLS.hist_error, 20);
+			if (fabsf(g_RLS.error_promedio) > 5.0f && flag_cMotor == 0) // umbral de error promedio, ajustar según sea necesario
+			{
+				multiplicar_matriz_vector(g_RLS.C, g_RLS.z, g_RLS.g);             // ======= RLS estable ======= g = C*z
 
-        desc_data_t desc_bytes_t;
-        desc_bytes_t.f = g_motor.rpm;
-		usart3_STM32.w_byte('i');
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
-		desc_bytes_t.f = g_RLS.ye;
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
-		desc_bytes_t.f = (float)g_motor.d;
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
-		usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
+				g_RLS.zgpp = producto_punto(g_RLS.z, g_RLS.g, MAX_DIMX);          // ======= alpha^2 = lambda + z'*g =======
+				g_RLS.alfa2 = g_RLS.fhi * g_RLS.fhi + g_RLS.zgpp;
 
-        cont_multtimer = cont_multtimer + 1;
-        if(cont_multtimer >= 10) // cada 100ms
-        {
-        	flag_LED = flag_LED + 1;
-            flag_multtimer = 1;
-            cont_multtimer = 0;
-        }
-        if(flag_LED >= 5)
-        {
-        	if(g_motor.d == 0){
-        		GPIO_STM32.rgb.r_toggle();
-        	}
-        	else {
-        		GPIO_STM32.rgb.r_off();
-        	}
-        	flag_LED = 0;
-        }
-        switch (funcion_t){
-        	case 0:
-        		g_motor.d = g_PWM.PWM;
-				break;
-        	case 1:
-        		Func_Cuadrada (g_Cuad.Mayor, g_Cuad.Menor, g_Cuad.T_Mayor, g_Cuad.T_Menor);
-        		break;
-        	case 2:
-        		Func_Ramp(g_Ramp.Mayor, g_Ramp.Menor, g_Ramp.Pendiente);
-				break;
-        	case 3:
-        		Func_DienteSierra(g_Diente.Mayor, g_Diente.Menor, g_Diente.Pendiente);
-        		break;
-        	case 4:
-        		Func_Triangulo(g_Triangulo.Mayor, g_Triangulo.Menor, g_Triangulo.Pendiente);
-        }
-        if (g_motor.d < 0){
-			g_motor.d = 0;
+				for (int i = 0; i < MAX_DIMX; i++)              // ======= Ganancia K = g / alfa2; =======
+				{
+					g_RLS.k_gain[i] = g_RLS.g[i] / g_RLS.alfa2;
+				}
+
+				for (i = 0; i < MAX_DIMX; i++)                  // ======= Actualización de parámetros ======= Pe = Pe + K*e; =======
+				{
+					g_RLS.Pe[i] = g_RLS.Pe[i] + (g_RLS.k_gain[i] * g_RLS.e);
+				}
+																// ======= Actualización covarianza (Joseph stabilized form) I = eye(size(C)); =======
+																// ======= C = (1/lambda) * (I - K*z.') * C * (I - K*z.').' ; =======
+				crear_C(g_RLS.I,1.0f);                                        // identidad
+				producto_exterior(g_RLS.k_gain,g_RLS.z,g_RLS.kg_Z);                       // kg_Z = K*z.'
+				restar_matrices(g_RLS.I, g_RLS.kg_Z, g_RLS.I_minus_KZ);                   // I - K*z.'
+				escalar_matriz_out(g_RLS.I_minus_KZ, g_RLS.inv_lambda, g_RLS.A_scaled);   // A_scaled = (1/lambda) * (I - K*z.')
+				multiplicar_matrices(g_RLS.A_scaled, g_RLS.C, g_RLS.R);                   // R = A_scaled * C
+				// (1) Transpuesta
+				transponer_matriz(g_RLS.I_minus_KZ, g_RLS.I_minus_KZ_T);
+				// (2) C_new = R * (I-Kz^T)^T
+				multiplicar_matrices(g_RLS.R, g_RLS.I_minus_KZ_T, g_RLS.C_new);
+				// (3) C = C_new
+				copiar_matriz(g_RLS.C_new, g_RLS.C);
+				simetrizar(g_RLS.C);
+				clamp_covariance(g_RLS.C, 1e-3f, 1e3f);
+			}
+			if (fabs(g_RLS.error_promedio) < 5.0f)
+			{
+				if(flag_cMotor == 0)
+				{
+					crear_C(g_RLS.C,10.10f);
+					g_RLS.alfa2 = 0.0f;
+					for(i = 0; i < MAX_DIMX; i++)
+					{
+						g_RLS.k_gain[i] = 0.0f;
+						g_RLS.g[i] = 0.0f;
+					}
+				}
+				flag_cMotor = 1;
+			}
+			else
+			{
+				if (flag_cMotor == 1)
+				{
+				}
+
+				flag_cMotor = 0;
+			}
+
+
 		}
-		if (g_motor.d > 999){
-			g_motor.d = 999;
+		//------------------------------------------------------------------------------------
+		//------------------------------------------------------------------------------------
+	}
+
+	desc_data_t desc_bytes_t;
+	desc_bytes_t.f = g_motor.rpm;
+	usart3_STM32.w_byte('i');
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
+	desc_bytes_t.f = g_RLS.ye;
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
+	desc_bytes_t.f = (float)g_motor.d;
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[3]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[2]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[1]);
+	usart3_STM32.w_byte(desc_bytes_t.bytes_t[0]);
+
+	cont_multtimer = cont_multtimer + 1;
+	if(cont_multtimer >= 10) // cada 100ms
+	{
+		flag_LED = flag_LED + 1;
+		flag_multtimer = 1;
+		cont_multtimer = 0;
+	}
+	if(flag_LED >= 5) //Cada 500ms
+	{
+		if(g_motor.d == 0){
+			GPIO_STM32.rgb.r_toggle();
 		}
-        PWM_STM32.motor.set_duty_permille(g_motor.d);
-    }
+		else {
+			GPIO_STM32.rgb.r_off();
+		}
+		flag_LED = 0;
+	}
+	switch (funcion_t){
+		case 0:
+			g_motor.d = g_PWM.PWM;
+			break;
+		case 1:
+			Func_Cuadrada (g_Cuad.Mayor, g_Cuad.Menor, g_Cuad.T_Mayor, g_Cuad.T_Menor);
+			break;
+		case 2:
+			Func_Ramp(g_Ramp.Mayor, g_Ramp.Menor, g_Ramp.Aumento_Y, g_Ramp.Aumento_X);
+			break;
+		case 3:
+			Func_DienteSierra(g_Diente.Mayor, g_Diente.Menor, g_Diente.Aumento_Y, g_Diente.Aumento_X);
+			break;
+		case 4:
+			Func_Triangulo(g_Triangulo.Mayor, g_Triangulo.Menor, g_Triangulo.Aumento_Y, g_Triangulo.Aumento_X);
+	}
+	if (g_motor.d < 0){
+		g_motor.d = 0;
+	}
+	if (g_motor.d > 999){
+		g_motor.d = 999;
+	}
+	PWM_STM32.motor.set_duty_permille(g_motor.d);
 }
-
-/*
-void USART3_IRQHandler(void)
-{
-    if (USART3->SR & USART_SR_RXNE)
-    {
-    	rx_data = (uint8_t)USART3->DR;
-        static uint8_t estado = 0;
-        static uint8_t msb = 0;
-
-        switch(estado) {
-            case 0:
-                if (rx_data == 'P') estado = 1;
-                //if (rx_data == 'C') estado = 0;
-				break;
-            case 1:
-                msb = rx_data;
-                estado = 2;
-                break;
-            case 2:
-            	//Combina los primeros 8 bits con los ultimos 8 bits
-                uint16_t resultado = (uint16_t)((msb << 8) | rx_data);
-                if (resultado <= 1000) { //Por si acaso
-                    g_motor.d = resultado;
-                }
-                estado = 0;
-                break;
-            default:
-                estado = 0;
-                break;
-        }
-    }
-}*/
-
-/*void USART3_IRQHandler(void)
-{
-    if (USART3->SR & USART_SR_RXNE)
-    {
-        //rx_data = (uint8_t)USART3->DR;
-    	rx_data = (uint8_t)usart3_STM32.r_byte();
-        static uint8_t estado = 0;
-        static uint8_t sub_estado = 0;
-        static uint8_t limite_bytes = 0;
-        static uint8_t *ptr_destino = NULL; // Puntero mágico
-
-        switch(estado) {
-            case 0: // BUSCAR ETIQUETA
-                if (rx_data == 'P') {
-                    ptr_destino = (uint8_t*)&g_motor.d; // Apunta al duty
-                    limite_bytes = 2;
-                    estado = 1;
-                }
-                else if (rx_data == 'C') {	//Cuadrado
-                    ptr_destino = (uint8_t*)&g_Cuad;
-                    limite_bytes = sizeof(Leer_Cuadrada_t);
-                    estado = 1;
-                }
-                else if (rx_data == 'R') {	//Rampa
-					ptr_destino = (uint8_t*)&g_Ramp;
-					limite_bytes = sizeof(Leer_Rampa_t);
-					estado = 1;
-				}
-                else if (rx_data == 'D') {	//Diente
-					ptr_destino = (uint8_t*)&g_Diente;
-					limite_bytes = sizeof(Leer_Diente_t);
-					estado = 1;
-				}
-                else if (rx_data == 'T') {	//Triangulo
-					ptr_destino = (uint8_t*)&g_Triangulo;
-					limite_bytes = sizeof(Leer_Triangulo_t);
-					estado = 1;
-				}
-                else if (rx_data == 'I') {	//Datos Motor
-					ptr_destino = (uint8_t*)&g_DatosMotor;
-					limite_bytes = sizeof(Leer_DatosMotor_t);
-					estado = 1;
-				}
-                sub_estado = 0;
-                break;
-
-            case 1:
-                if (ptr_destino != NULL) {
-                    ptr_destino[sub_estado] = rx_data;
-                    sub_estado++;
-
-                    if (sub_estado >= limite_bytes) {
-                    	uint16_t *datos16 = (uint16_t*)ptr_destino;
-						uint8_t num_elementos = limite_bytes / 2;
-
-						for(uint8_t i = 0; i < num_elementos; i++) {
-							// Intercambio de bytes
-							datos16[i] = (uint16_t)((datos16[i] << 8) | (datos16[i] >> 8));
-						}
-
-						estado = 0;
-                    }
-                }
-                break;
-        }
-    }
-}*/
 
 void Recibo_UART3 (void){
 	rx_data = (uint8_t)usart3_STM32.r_byte();
 	static uint8_t estado = 0;
 	static uint8_t sub_estado = 0;
 	static uint8_t limite_bytes = 0;
-	static uint8_t *ptr_destino = NULL; // Puntero mágico
+	static uint8_t *ptr_destino = NULL;
 
 	switch(estado) {
-		case 0: // BUSCAR ETIQUETA
-			if (rx_data == 'P') {
-				ptr_destino = (uint8_t*)&g_PWM; // Apunta al duty
+		case 0:
+			if (rx_data == 'P')
+			{
+				ptr_destino = (uint8_t*)&g_PWM;
 				limite_bytes = 2;
 				estado = 1;
 				funcion_t = 0;
 				cont_t = 0;
 			}
-			else if (rx_data == 'C') {	//Cuadrado
+			else if (rx_data == 'C') 	//Cuadrado
+			{
 				ptr_destino = (uint8_t*)&g_Cuad;
 				limite_bytes = sizeof(Leer_Cuadrada_t);
 				estado = 1;
 				funcion_t = 1;
 				cont_t = 0;
 			}
-			else if (rx_data == 'R') {	//Rampa
+			else if (rx_data == 'R') 	//Rampa
+			{
 				ptr_destino = (uint8_t*)&g_Ramp;
 				limite_bytes = sizeof(Leer_Rampa_t);
 				estado = 1;
 				funcion_t = 2;
 				cont_t = 0;
 			}
-			else if (rx_data == 'D') {	//Diente
+			else if (rx_data == 'D') //Diente
+			{
 				ptr_destino = (uint8_t*)&g_Diente;
 				limite_bytes = sizeof(Leer_Diente_t);
 				estado = 1;
 				funcion_t = 3;
 				cont_t = 0;
 			}
-			else if (rx_data == 'T') {	//Triangulo
+			else if (rx_data == 'T') 	//Triangulo
+			{
 				ptr_destino = (uint8_t*)&g_Triangulo;
 				limite_bytes = sizeof(Leer_Triangulo_t);
 				estado = 1;
 				funcion_t = 4;
 				cont_t = 0;
 			}
-			else if (rx_data == 'I') {	//Datos Motor
+			else if (rx_data == 'I') 	//Datos Motor
+			{
 				ptr_destino = (uint8_t*)&g_DatosMotor;
 				limite_bytes = sizeof(Leer_DatosMotor_t);
 				estado = 1;
@@ -538,15 +458,18 @@ void Recibo_UART3 (void){
 			break;
 
 		case 1:
-			if (ptr_destino != NULL) {
+			if (ptr_destino != NULL)
+			{
 				ptr_destino[sub_estado] = rx_data;
 				sub_estado++;
 
-				if (sub_estado >= limite_bytes) {
+				if (sub_estado >= limite_bytes)
+				{
 					uint16_t *datos16 = (uint16_t*)ptr_destino;
 					uint8_t num_elementos = limite_bytes / 2;
 
-					for(uint8_t i = 0; i < num_elementos; i++) {
+					for(uint8_t i = 0; i < num_elementos; i++)
+					{
 						// Intercambio de bytes
 						datos16[i] = (uint16_t)((datos16[i] << 8) | (datos16[i] >> 8));
 					}
@@ -558,62 +481,83 @@ void Recibo_UART3 (void){
 	}
 }
 
-void Func_Cuadrada (uint16_t Maximo, uint16_t Minimo, uint16_t T_Max, uint16_t T_Min){
+void Func_Cuadrada (uint16_t Maximo, uint16_t Minimo, uint16_t T_Max, uint16_t T_Min)
+{
 	uint32_t periodo_total = T_Max + T_Min;
-	if (cont_t < T_Max) {
-		// Parte ALTA del ciclo
+	if (cont_t < T_Max)
+	{
 		g_motor.d = Maximo;
 	}
-	else if (cont_t < periodo_total) {
-		// Parte BAJA del ciclo
+	else if (cont_t < periodo_total)
+	{
 		g_motor.d = Minimo;
 	}
 
 	cont_t++;
 
-	if (cont_t >= periodo_total) {
+	if (cont_t >= periodo_total)
+	{
 		cont_t = 0;
 	}
 }
 
-void Func_Ramp(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente) {
-    uint32_t valor_actual = Minimo + (cont_t * Pendiente);
+void Func_Ramp(uint16_t Maximo, uint16_t Minimo, uint16_t DY, uint16_t DX)
+{
+    if (DX == 0) DX = 1;
+    uint32_t escalones = cont_t / DX;
+    uint32_t valor_actual = Minimo + (escalones * DY);
 
-    if (valor_actual >= Maximo) {
+    if (valor_actual >= Maximo)
+    {
         g_motor.d = Maximo;
-    } else {
+    }
+    else
+    {
         g_motor.d = (uint16_t)valor_actual;
         cont_t++;
     }
 }
 
-void Func_DienteSierra(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente) {
-    uint32_t valor_actual = Minimo + (cont_t * Pendiente);
+void Func_DienteSierra(uint16_t Maximo, uint16_t Minimo, uint16_t DY, uint16_t DX)
+{
+    if (DX == 0) DX = 1;
+    uint32_t escalones = cont_t / DX;
+    uint32_t valor_actual = Minimo + (escalones * DY);
 
-    if (valor_actual >= Maximo) {
+    if (valor_actual >= Maximo)
+    {
         g_motor.d = Maximo;
         cont_t = 0;
-    } else {
+    }
+    else
+    {
         g_motor.d = (uint16_t)valor_actual;
         cont_t++;
     }
 }
 
-void Func_Triangulo(uint16_t Maximo, uint16_t Minimo, uint16_t Pendiente) {
-    if (Pendiente == 0) return;
-    uint32_t pasos_subida = (Maximo - Minimo) / Pendiente;
-    uint32_t periodo_total = pasos_subida * 2;
+void Func_Triangulo(uint16_t Maximo, uint16_t Minimo, uint16_t DY, uint16_t DX)
+{
+    if (DX == 0) DX = 1;
+    if (DY == 0) return;
+    uint32_t num_escalones = (Maximo - Minimo) / DY;
+    uint32_t ticks_subida = num_escalones * DX;
+    uint32_t ticks_totales = ticks_subida * 2;
 
-    if (cont_t < pasos_subida) {
-        g_motor.d = Minimo + (cont_t * Pendiente);
+    if (cont_t < ticks_subida) {
+        uint32_t escalones_act = cont_t / DX;
+        g_motor.d = Minimo + (escalones_act * DY);
     }
-    else if (cont_t < periodo_total) {
-        uint32_t bajada = cont_t - pasos_subida;
-        g_motor.d = Maximo - (bajada * Pendiente);
+    else if (cont_t < ticks_totales)
+    {
+        uint32_t ticks_bajada = cont_t - ticks_subida;
+        uint32_t escalones_desc = ticks_bajada / DX;
+        g_motor.d = Maximo - (escalones_desc * DY);
     }
+
     cont_t++;
-
-    if (cont_t >= periodo_total) {
+    if (cont_t >= ticks_totales)
+    {
         cont_t = 0;
     }
 }

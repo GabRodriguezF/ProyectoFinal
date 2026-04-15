@@ -2,6 +2,8 @@
 #include "stm32f4xx.h"
 #include "timer_driver.h"
 
+static TIM4_callback cb2 = 0;
+
 void timer4_init(void)
 {
     RCC->APB1ENR |= RCC_APB1ENR_TIM4EN; // Habilitar el reloj para TIM4
@@ -34,7 +36,7 @@ void timer4_init(void)
     // 7) Arrancar timer
     TIM4->CR1 |= TIM_CR1_CEN;
 }
-/*
+
 void register_TIM4_callback1(TIM4_callback c)
 {
     cb2 = c;
@@ -45,9 +47,9 @@ void TIM4_IRQHandler(void)
 	if (TIM4->SR & TIM_SR_UIF)
 	{
 		TIM4->SR &= ~TIM_SR_UIF;   // clear UIF (escritura 0)
-		if(cb1 != 0)
+		if(cb2 != 0)
 		{
 			cb2();
 		}
 	}
-}*/
+}

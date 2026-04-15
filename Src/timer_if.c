@@ -2,5 +2,6 @@
 #include "timer_driver.h"
 
 const timer_if_t timer_STM32 = {
-    .tim_control_init = timer4_init
+    .tim_control_init = timer4_init,
+	.call_back_01 = register_TIM4_callback1
 };
